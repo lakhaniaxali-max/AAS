@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="utf-8"?>
+<menu xmlns:android="http://schemas.android.com/apk/res/android">
+    <item
+        android:id="@+id/nav_landing_home"
+        android:title="Home"
+        android:icon="@android:drawable/ic_menu_today" />
+    <item
+        android:id="@+id/nav_landing_about"
+        android:title="About Us"
+        android:icon="@android:drawable/ic_menu_info_details" />
+    <item
+        android:id="@+id/nav_landing_contact"
+        android:title="Contact Us"
+        android:icon="@android:drawable/ic_menu_call" />
+    <item
+        android:id="@+id/nav_landing_faq"
+        android:title="FAQ"
+        android:icon="@android:drawable/ic_menu_help" />
+</menu>
+

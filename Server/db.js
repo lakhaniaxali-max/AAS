@@ -1,48 +1,49 @@
-const mysql = require("mysql2/promise");
+const { Pool } = require("pg");
 const fs = require("fs");
 const path = require("path");
-require("dotenv").config();
+require("dotenv").config({ path: path.join(__dirname, ".env") });
+require("dotenv").config(); // fallback
 
-// SSL Configuration for Aiven / Production
+// SSL Configuration for Aiven / Neon / Supabase / Production
 const caPath = "/etc/secrets/ca.pem";
-let sslConfig = {
-    rejectUnauthorized: true // Secure by default
-};
+let sslConfig = false;
 
-try {
-    if (fs.existsSync(caPath)) {
-        sslConfig.ca = fs.readFileSync(caPath);
-        console.log("✅ Database CA certificate loaded successfully.");
-    } else {
-        console.warn("⚠️ CA certificate not found at /etc/secrets/ca.pem. Falling back to unauthorized-allow for local development.");
-        sslConfig.rejectUnauthorized = false;
+if (process.env.DB_SSL === "true" || process.env.DB_SSL === true) {
+    sslConfig = {
+        rejectUnauthorized: false
+    };
+
+    try {
+        if (fs.existsSync(caPath)) {
+            sslConfig.ca = fs.readFileSync(caPath);
+            sslConfig.rejectUnauthorized = true;
+            console.log("✅ PostgreSQL CA certificate loaded successfully.");
+        }
+    } catch (error) {
+        console.error("❌ Error reading CA certificate:", error);
     }
-} catch (error) {
-    console.error("❌ Error reading CA certificate:", error);
 }
 
-const pool = mysql.createPool({
-    host: process.env.DB_HOST,
-    port: process.env.DB_PORT || 3306,
-    user: process.env.DB_USER,
-    password: process.env.DB_PASSWORD,
-    database: process.env.DB_NAME,
+const pool = new Pool({
+    host: process.env.DB_HOST || "localhost",
+    port: parseInt(process.env.DB_PORT || "5432", 10),
+    user: process.env.DB_USER || "postgres",
+    password: process.env.DB_PASSWORD || "",
+    database: process.env.DB_NAME || "accurate_accounts",
     ssl: sslConfig,
-    waitForConnections: true,
-    connectionLimit: 10, 
-    queueLimit: 0,
-    enableKeepAlive: true,
-    keepAliveInitialDelay: 10000
+    max: 15,
+    idleTimeoutMillis: 30000,
+    connectionTimeoutMillis: 5000
 });
 
-// Utility to check connection on startup
+// Utility to verify connection on startup
 (async () => {
     try {
-        const connection = await pool.getConnection();
-        console.log("✅ Database pool initialized and connection verified.");
-        connection.release();
+        const client = await pool.connect();
+        console.log("✅ PostgreSQL pool initialized and connection verified.");
+        client.release();
     } catch (err) {
-        console.error("❌ Database connection failed during pool initialization:", err.message);
+        console.error("❌ PostgreSQL connection failed during pool initialization:", err.message);
     }
 })();
 

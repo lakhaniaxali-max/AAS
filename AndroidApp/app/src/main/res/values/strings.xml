@@ -1,0 +1,15 @@
+<resources>
+    <string name="app_name">Accurate Account Services</string>
+    <string name="login_title">Accurate Account Services</string>
+    <string name="login_subtitle">Login to manage your accounting and tasks</string>
+    <string name="username_hint">Username</string>
+    <string name="password_hint">Password</string>
+    <string name="login_button">Login</string>
+    <string name="nav_dashboard">Dashboard</string>
+    <string name="nav_tasks">Tasks</string>
+    <string name="nav_chat">Chat</string>
+    <string name="nav_profile">Profile</string>
+    <string name="tasks_title">Tasks &amp; Deadlines</string>
+    <string name="chat_title">Messages &amp; Groups</string>
+</resources>
+

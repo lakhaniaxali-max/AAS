@@ -52,27 +52,43 @@ module.exports = (db, io) => {
 
     try {
       if (receiver_id && !group_id) {
-        const query = "INSERT INTO PersonalChats (sender_id, receiver_id, message) VALUES (?, ?, ?)";
-        const [result] = await db.query(query, [sender_id, receiver_id, message]);
-        const chat_id = result.insertId;
+        const query = `
+          INSERT INTO personal_chats (sender_id, receiver_id, message) 
+          VALUES ($1, $2, $3) 
+          RETURNING chat_id`;
+        const result = await db.query(query, [sender_id, receiver_id, message]);
+        const chat_id = result.rows[0].chat_id;
         const senderUser = dataCache.getUser(sender_id);
         const messageData = {
-          message_id: chat_id, sender_id, receiver_id, message,
+          message_id: chat_id, 
+          sender_id, 
+          receiver_id, 
+          message,
           created_at: new Date().toISOString(),
-          first_name: senderUser?.first_name, last_name: senderUser?.last_name, profile_pic: senderUser?.profile_pic
+          first_name: senderUser?.first_name, 
+          last_name: senderUser?.last_name, 
+          profile_pic: senderUser?.profile_pic
         };
         io.to(`user_${receiver_id}`).emit("receive_message", messageData);
         io.to(`user_${sender_id}`).emit("receive_message", messageData);
         res.json({ success: true, chat_id });
       } else if (group_id) {
-        const query = "INSERT INTO GroupChatMessages (group_id, sender_id, message) VALUES (?, ?, ?)";
-        const [result] = await db.query(query, [group_id, sender_id, message]);
-        const message_id = result.insertId;
+        const query = `
+          INSERT INTO group_chat_messages (group_id, sender_id, message) 
+          VALUES ($1, $2, $3) 
+          RETURNING message_id`;
+        const result = await db.query(query, [group_id, sender_id, message]);
+        const message_id = result.rows[0].message_id;
         const senderUser = dataCache.getUser(sender_id);
         const messageData = {
-          message_id, sender_id, group_id, message,
+          message_id, 
+          sender_id, 
+          group_id, 
+          message,
           created_at: new Date().toISOString(),
-          first_name: senderUser?.first_name, last_name: senderUser?.last_name, profile_pic: senderUser?.profile_pic
+          first_name: senderUser?.first_name, 
+          last_name: senderUser?.last_name, 
+          profile_pic: senderUser?.profile_pic
         };
         io.to(`group_${group_id}`).emit("receive_message", messageData);
         res.json({ success: true, message_id });
@@ -114,18 +130,31 @@ module.exports = (db, io) => {
       return res.status(400).json({ error: "Invalid input" });
     }
 
+    const client = await db.connect();
     try {
-      await db.beginTransaction();
-      const [results] = await db.query("INSERT INTO GroupChats (group_name) VALUES (?)", [group_name]);
-      const group_id = results.insertId;
+      await client.query("BEGIN");
+      const insertGroupRes = await client.query(
+        "INSERT INTO group_chats (group_name, created_by) VALUES ($1, $2) RETURNING group_id", 
+        [group_name, creator_id]
+      );
+      const group_id = insertGroupRes.rows[0].group_id;
       const membersToAdd = [...new Set(members)];
-      const membersValues = membersToAdd.map(uid => [group_id, uid]);
-      await db.query("INSERT INTO GroupChatMembers (group_id, user_id) VALUES ?", [membersValues]);
-      await db.commit();
+      
+      for (const uid of membersToAdd) {
+        await client.query(
+          "INSERT INTO group_chat_members (group_id, user_id) VALUES ($1, $2)",
+          [group_id, uid]
+        );
+      }
+
+      await client.query("COMMIT");
       res.json({ success: true, group_id });
     } catch (err) {
-      await db.rollback();
+      await client.query("ROLLBACK");
+      console.error("Error creating group:", err);
       res.status(500).json({ error: "Error creating group: " + err.message });
+    } finally {
+      client.release();
     }
   });
 
@@ -135,21 +164,24 @@ module.exports = (db, io) => {
     const { group_name, members } = req.body;
     if (!group_name) return res.status(400).json({ error: "group_name is required" });
 
+    const client = await db.connect();
     try {
-      await db.beginTransaction();
-      await db.query("UPDATE GroupChats SET group_name = ? WHERE group_id = ?", [group_name, group_id]);
-      if (members) {
-        await db.query("DELETE FROM GroupChatMembers WHERE group_id = ?", [group_id]);
-        if (members.length > 0) {
-          const values = members.map(uid => [group_id, uid]);
-          await db.query("INSERT INTO GroupChatMembers (group_id, user_id) VALUES ?", [values]);
+      await client.query("BEGIN");
+      await client.query("UPDATE group_chats SET group_name = $1 WHERE group_id = $2", [group_name, group_id]);
+      if (members && Array.isArray(members)) {
+        await client.query("DELETE FROM group_chat_members WHERE group_id = $1", [group_id]);
+        for (const uid of members) {
+          await client.query("INSERT INTO group_chat_members (group_id, user_id) VALUES ($1, $2)", [group_id, uid]);
         }
       }
-      await db.commit();
+      await client.query("COMMIT");
       res.json({ success: true, message: "Group updated" });
     } catch (err) {
-      await db.rollback();
+      await client.query("ROLLBACK");
+      console.error("Error updating group:", err);
       res.status(500).json({ error: "Update failed" });
+    } finally {
+      client.release();
     }
   });
 
@@ -158,10 +190,11 @@ module.exports = (db, io) => {
     const { group_id } = req.params;
     const { user_id } = req.body;
     try {
-      await db.query("INSERT INTO GroupChatMembers (group_id, user_id) VALUES (?, ?)", [group_id, user_id]);
+      await db.query("INSERT INTO group_chat_members (group_id, user_id) VALUES ($1, $2)", [group_id, user_id]);
       res.json({ success: true });
     } catch (err) {
-      if (err.code === 'ER_DUP_ENTRY') return res.json({ message: "Already a member" });
+      if (err.code === '23505') return res.json({ message: "Already a member" });
+      console.error("Error adding member:", err);
       res.status(500).json({ error: "Error adding member" });
     }
   });
@@ -169,9 +202,10 @@ module.exports = (db, io) => {
   // DELETE remove member
   router.delete("/groups/:group_id/members/:user_id", async (req, res) => {
     try {
-      await db.query("DELETE FROM GroupChatMembers WHERE group_id = ? AND user_id = ?", [req.params.group_id, req.params.user_id]);
+      await db.query("DELETE FROM group_chat_members WHERE group_id = $1 AND user_id = $2", [req.params.group_id, req.params.user_id]);
       res.json({ success: true });
     } catch (err) {
+      console.error("Error removing member:", err);
       res.status(500).json({ error: "Error removing member" });
     }
   });
@@ -179,18 +213,22 @@ module.exports = (db, io) => {
   // DELETE group
   router.delete("/groups/:group_id", async (req, res) => {
     const { group_id } = req.params;
+    const client = await db.connect();
     try {
-      await db.beginTransaction();
-      await db.query("DELETE FROM GroupChatMembers WHERE group_id = ?", [group_id]);
-      await db.query("DELETE FROM GroupChatMessageSeen WHERE group_id = ?", [group_id]);
-      await db.query("DELETE FROM GroupChatMessages WHERE group_id = ?", [group_id]);
-      await db.query("UPDATE Tasks SET group_id = NULL WHERE group_id = ?", [group_id]);
-      await db.query("DELETE FROM GroupChats WHERE group_id = ?", [group_id]);
-      await db.commit();
+      await client.query("BEGIN");
+      await client.query("DELETE FROM group_chat_members WHERE group_id = $1", [group_id]);
+      await client.query("DELETE FROM group_chat_message_seen WHERE group_id = $1", [group_id]);
+      await client.query("DELETE FROM group_chat_messages WHERE group_id = $1", [group_id]);
+      await client.query("UPDATE tasks SET group_id = NULL WHERE group_id = $1", [group_id]);
+      await client.query("DELETE FROM group_chats WHERE group_id = $1", [group_id]);
+      await client.query("COMMIT");
       res.json({ success: true });
     } catch (err) {
-      await db.rollback();
+      await client.query("ROLLBACK");
+      console.error("Error deleting group:", err);
       res.status(500).json({ error: "Delete failed" });
+    } finally {
+      client.release();
     }
   });
 

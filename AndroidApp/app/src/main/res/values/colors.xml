@@ -1,0 +1,28 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <color name="primary">#2563EB</color>
+    <color name="primary_dark">#1D4ED8</color>
+    <color name="accent">#3B82F6</color>
+    <color name="background">#F8FAFC</color>
+    <color name="card_background">#FFFFFF</color>
+    <color name="text_primary">#0F172A</color>
+    <color name="text_secondary">#64748B</color>
+    <color name="divider">#E2E8F0</color>
+    <color name="priority_high_bg">#FEE2E2</color>
+    <color name="priority_high_text">#DC2626</color>
+    <color name="priority_med_bg">#FEF3C7</color>
+    <color name="priority_med_text">#D97706</color>
+    <color name="priority_low_bg">#DCFCE7</color>
+    <color name="priority_low_text">#16A34A</color>
+    <color name="chat_outgoing">#2563EB</color>
+    <color name="chat_incoming">#E2E8F0</color>
+    <color name="stat_blue_bg">#EFF6FF</color>
+    <color name="stat_blue_icon">#2563EB</color>
+    <color name="stat_red_bg">#FEF2F2</color>
+    <color name="stat_red_icon">#EF4444</color>
+    <color name="stat_green_bg">#F0FDF4</color>
+    <color name="stat_green_icon">#22C55E</color>
+    <color name="stat_purple_bg">#FAF5FF</color>
+    <color name="stat_purple_icon">#A855F7</color>
+</resources>
+

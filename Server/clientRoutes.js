@@ -4,34 +4,21 @@ const dataCache = require("./dataCache");
 module.exports = (db) => {
     const router = express.Router();
 
-    // Fetch all clients sweepingly (Paginated)
+    // Fetch all clients sweepingly (Direct DB with Cache fallback)
     router.get("/", async (req, res) => {
-        let results = dataCache.getClients();
-        
-        if (results.length === 0) {
-          try {
-            const [rows] = await db.query(`
-              SELECT Clients.*, Auth.username, Auth.role
-              FROM Clients
-              INNER JOIN Auth ON Clients.auth_id = Auth.auth_id
+        try {
+            const { rows } = await db.query(`
+              SELECT c.*, a.username, a.role, cc.phone
+              FROM clients c
+              INNER JOIN auth a ON c.auth_id = a.auth_id
+              LEFT JOIN client_contacts cc ON c.client_id = cc.client_id
+              ORDER BY c.client_id DESC
             `);
-            results = rows;
-          } catch (err) {
+            res.json(rows);
+        } catch (err) {
             console.error("Client list fallback error:", err);
-          }
+            res.json(dataCache.getClients());
         }
-
-        const page = req.query.page ? parseInt(req.query.page) : null;
-        const limit = req.query.limit ? parseInt(req.query.limit) : 20;
-
-        if (page && limit) {
-          const offset = (page - 1) * limit;
-          return res.json({
-            data: results.slice(offset, offset + limit),
-            pagination: { currentPage: page, pageSize: limit, total: results.length, totalPages: Math.ceil(results.length / limit) }
-          });
-        }
-        res.json(results);
     });
 
     // Fetch a specific client by client_id (Primary ID for lookups)
@@ -44,21 +31,21 @@ module.exports = (db) => {
 
         // 2. Fallback to DB (Check by client_id)
         const query = `
-            SELECT Clients.*, Auth.username, Auth.role
-            FROM Clients
-            INNER JOIN Auth ON Clients.auth_id = Auth.auth_id
-            WHERE Clients.client_id = ?`;
+            SELECT c.*, a.username, a.role
+            FROM clients c
+            INNER JOIN auth a ON c.auth_id = a.auth_id
+            WHERE c.client_id = $1`;
 
         try {
-            const [results] = await db.query(query, [id]);
+            const { rows: results } = await db.query(query, [id]);
             if (results.length > 0) return res.json(results[0]);
 
             // 3. Last Resort: Try by auth_id (for backwards compatibility during transition)
-            const [authResults] = await db.query(`
-                SELECT Clients.*, Auth.username, Auth.role
-                FROM Clients
-                INNER JOIN Auth ON Clients.auth_id = Auth.auth_id
-                WHERE Clients.auth_id = ?`, [id]);
+            const { rows: authResults } = await db.query(`
+                SELECT c.*, a.username, a.role
+                FROM clients c
+                INNER JOIN auth a ON c.auth_id = a.auth_id
+                WHERE c.auth_id = $1`, [id]);
             
             if (authResults.length > 0) return res.json(authResults[0]);
 

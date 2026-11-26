@@ -6,11 +6,6 @@ module.exports = (db) => {
    * Update user information across Auth and Users tables
    */
   router.put('/update-user', async (req, res) => {
-    // console.log('User update request received:', {
-    //   body: req.body,
-    //   timestamp: new Date().toISOString()
-    // });
-
     const {
       auth_id,
       user_id,
@@ -26,48 +21,50 @@ module.exports = (db) => {
 
     // Validate required fields
     if (!auth_id || !user_id) {
-      console.error('Missing required IDs:', { auth_id, user_id });
       return res.status(400).json({
         error: 'Missing required fields: auth_id and user_id'
       });
     }
 
+    const client = await db.connect();
     try {
-      await db.beginTransaction();
+      await client.query("BEGIN");
 
       // 1. Update Auth table
-      const authUpdateParams = [username, role, auth_id];
-      let authUpdateQuery = 'UPDATE Auth SET username = ?, role = ? WHERE auth_id = ?';
-
       if (password && password.trim() !== '') {
-        authUpdateQuery = 'UPDATE Auth SET username = ?, password = ?, role = ? WHERE auth_id = ?';
-        authUpdateParams.splice(1, 0, password);
+        await client.query(
+          'UPDATE auth SET username = $1, password = $2, role = $3 WHERE auth_id = $4',
+          [username, password, role, auth_id]
+        );
+      } else {
+        await client.query(
+          'UPDATE auth SET username = $1, role = $2 WHERE auth_id = $3',
+          [username, role, auth_id]
+        );
       }
-
-      const [authResult] = await db.query(authUpdateQuery, authUpdateParams);
 
       // 2. Update Users table
       const userUpdateQuery = `
-        UPDATE Users 
-        SET first_name = ?, last_name = ?, email = ?, phone = ?, profile_pic = ?
-        WHERE user_id = ?
+        UPDATE users 
+        SET first_name = $1, last_name = $2, email = $3, phone = $4, profile_pic = $5
+        WHERE user_id = $6
       `;
       const userUpdateParams = [first_name, last_name, email, phone, profile_pic, user_id];
-      const [userResult] = await db.query(userUpdateQuery, userUpdateParams);
+      await client.query(userUpdateQuery, userUpdateParams);
 
-      await db.commit();
+      await client.query("COMMIT");
 
       res.status(200).json({
         success: true,
-        message: 'User updated successfully',
-        auth_affected: authResult.affectedRows,
-        user_affected: userResult.affectedRows
+        message: 'User updated successfully'
       });
 
     } catch (error) {
-      await db.rollback();
+      await client.query("ROLLBACK");
       console.error('Error during user update:', error.message);
       res.status(500).json({ error: 'Failed to update user' });
+    } finally {
+      client.release();
     }
   });
 
@@ -90,44 +87,53 @@ module.exports = (db) => {
       return res.status(400).json({ error: 'Missing required IDs' });
     }
 
+    const client = await db.connect();
     try {
-      await db.beginTransaction();
+      await client.query("BEGIN");
 
       // 1. Update Auth table
-      const authUpdateParams = [username, auth_id];
-      let authUpdateQuery = 'UPDATE Auth SET username = ? WHERE auth_id = ?';
-
       if (password && password.trim() !== '') {
-        authUpdateQuery = 'UPDATE Auth SET username = ?, password = ? WHERE auth_id = ?';
-        authUpdateParams.splice(1, 0, password);
+        await client.query(
+          'UPDATE auth SET username = $1, password = $2 WHERE auth_id = $3',
+          [username, password, auth_id]
+        );
+      } else {
+        await client.query(
+          'UPDATE auth SET username = $1 WHERE auth_id = $2',
+          [username, auth_id]
+        );
       }
-
-      const [authResult] = await db.query(authUpdateQuery, authUpdateParams);
 
       // 2. Update Clients table
       const clientUpdateQuery = `
-        UPDATE Clients 
-        SET company_name = ?, contact_person = ?, email = ?, gstin = ?, pan_number = ?, profile_pic = ?
-        WHERE client_id = ?
+        UPDATE clients 
+        SET company_name = $1, contact_person = $2, email = $3, gstin = $4, pan_number = $5, profile_pic = $6
+        WHERE client_id = $7
       `;
       const clientUpdateParams = [company_name, contact_person, email, gstin || null, pan_number || null, profile_pic, client_id];
-      const [clientResult] = await db.query(clientUpdateQuery, clientUpdateParams);
+      await client.query(clientUpdateQuery, clientUpdateParams);
 
       // 3. Update ClientContacts
-      await db.query('DELETE FROM ClientContacts WHERE client_id = ?', [client_id]);
+      await client.query('DELETE FROM client_contacts WHERE client_id = $1', [client_id]);
 
-      if (contacts.length > 0) {
-        const contactValues = contacts.map(contact => [client_id, contact.contact_name, contact.phone, contact.email]);
-        await db.query('INSERT INTO ClientContacts (client_id, contact_name, phone, email) VALUES ?', [contactValues]);
+      if (contacts && contacts.length > 0) {
+        for (const contact of contacts) {
+          await client.query(
+            'INSERT INTO client_contacts (client_id, contact_name, phone, email) VALUES ($1, $2, $3, $4)',
+            [client_id, contact.contact_name, contact.phone, contact.email]
+          );
+        }
       }
 
-      await db.commit();
+      await client.query("COMMIT");
       res.status(200).json({ success: true, message: 'Client updated successfully' });
 
     } catch (error) {
-      await db.rollback();
+      await client.query("ROLLBACK");
       console.error('Error during client update:', error.message);
       res.status(500).json({ error: 'Failed to update client' });
+    } finally {
+      client.release();
     }
   });
 

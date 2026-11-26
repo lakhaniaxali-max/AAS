@@ -5,26 +5,22 @@ const dataCache = require("./dataCache");
 module.exports = (db) => {
   const router = express.Router();
 
-  // Fetch all users with their roles (Paginated)
-  router.get("/", (req, res) => {
-    const results = dataCache.getUsers();
-    const page = req.query.page ? parseInt(req.query.page) : null;
-    const limit = req.query.limit ? parseInt(req.query.limit) : 20;
-
-    if (page && limit) {
-      const offset = (page - 1) * limit;
-      const paginatedResults = results.slice(offset, offset + limit);
-      res.json({
-        data: paginatedResults,
-        pagination: {
-          currentPage: page,
-          pageSize: limit,
-          total: results.length,
-          totalPages: Math.ceil(results.length / limit)
-        }
-      });
-    } else {
+  // Fetch all users with their roles (Direct DB with Cache fallback)
+  router.get("/", async (req, res) => {
+    try {
+      const query = `
+        SELECT 
+          u.user_id, u.auth_id, a.username, a.role, 
+          u.first_name, u.last_name, u.email, u.phone, 
+          u.profile_pic, u.created_at, u.updated_at 
+        FROM users u 
+        INNER JOIN auth a ON u.auth_id = a.auth_id
+        ORDER BY u.user_id DESC`;
+      const { rows: results } = await db.query(query);
       res.json(results);
+    } catch (err) {
+      console.error("Database error fetching users, falling back to cache:", err);
+      res.json(dataCache.getUsers());
     }
   });
 
@@ -44,14 +40,14 @@ module.exports = (db) => {
     try {
       const query = `
         SELECT 
-          Users.user_id, Users.auth_id, Auth.username, Auth.role, 
-          Users.first_name, Users.last_name, Users.email, Users.phone, 
-          Users.profile_pic, Users.created_at, Users.updated_at 
-        FROM Users 
-        INNER JOIN Auth ON Users.auth_id = Auth.auth_id
-        WHERE Users.user_id = ? OR Users.auth_id = ?`;
+          u.user_id, u.auth_id, a.username, a.role, 
+          u.first_name, u.last_name, u.email, u.phone, 
+          u.profile_pic, u.created_at, u.updated_at 
+        FROM users u 
+        INNER JOIN auth a ON u.auth_id = a.auth_id
+        WHERE u.user_id = $1 OR u.auth_id = $2`;
       
-      const [results] = await db.query(query, [id, id]);
+      const { rows: results } = await db.query(query, [id, id]);
       if (results.length > 0) return res.json(results[0]);
 
       return res.status(404).json({ error: "User not found" });
@@ -79,28 +75,29 @@ module.exports = (db) => {
       // 3. Fallback to DB - Check USERS first
       const userQuery = `
         SELECT 
-          Users.user_id, Users.auth_id, Auth.username, Auth.role, 
-          Users.first_name, Users.last_name, Users.email, Users.phone, 
-          Users.profile_pic, Users.created_at, Users.updated_at 
-        FROM Users 
-        INNER JOIN Auth ON Users.auth_id = Auth.auth_id
-        WHERE Users.auth_id = ?`;
+          u.user_id, u.auth_id, a.username, a.role, 
+          u.first_name, u.last_name, u.email, u.phone, 
+          u.profile_pic, u.created_at, u.updated_at 
+        FROM users u 
+        INNER JOIN auth a ON u.auth_id = a.auth_id
+        WHERE u.auth_id = $1`;
       
-      const [userResults] = await db.query(userQuery, [auth_id]);
+      const { rows: userResults } = await db.query(userQuery, [auth_id]);
       if (userResults.length > 0) return res.json(userResults[0]);
 
       // 4. Fallback to DB - Check CLIENTS
       const clientQuery = `
         SELECT 
-          Clients.client_id, Clients.auth_id, Auth.username, Auth.role,
-          Clients.company_name, Clients.contact_person, Clients.email,
-          Clients.gstin, Clients.pan_number, Clients.profile_pic,
-          Clients.created_at, Clients.updated_at
-        FROM Clients
-        INNER JOIN Auth ON Clients.auth_id = Auth.auth_id
-        WHERE Clients.auth_id = ?`;
+          c.client_id, c.auth_id, a.username, a.role,
+          c.company_name, c.contact_person, c.email,
+          c.gstin, c.pan_number, c.profile_pic,
+          COALESCE((SELECT phone FROM client_contacts WHERE client_id = c.client_id ORDER BY contact_id LIMIT 1), '') AS phone,
+          c.created_at, c.updated_at
+        FROM clients c
+        INNER JOIN auth a ON c.auth_id = a.auth_id
+        WHERE c.auth_id = $1`;
 
-      const [clientResults] = await db.query(clientQuery, [auth_id]);
+      const { rows: clientResults } = await db.query(clientQuery, [auth_id]);
       if (clientResults.length > 0) return res.json(clientResults[0]);
 
       // Not found anywhere

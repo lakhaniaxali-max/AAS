@@ -19,31 +19,31 @@ module.exports = (db) => {
 
         const personalQuery = `
             SELECT sender_id, COUNT(*) as unseen_count
-            FROM PersonalChats
-            WHERE receiver_id = ? AND is_seen = FALSE
+            FROM personal_chats
+            WHERE receiver_id = $1 AND is_seen = FALSE
             GROUP BY sender_id
         `;
 
         const groupQuery = `
             SELECT group_id, COUNT(*) as unseen_count
-            FROM GroupChatMessageSeen
-            WHERE user_id = ? AND is_seen = FALSE
+            FROM group_chat_message_seen
+            WHERE user_id = $1 AND is_seen = FALSE
             GROUP BY group_id
         `;
 
         try {
             // Execute both queries in parallel
-            const [[personalResults], [groupResults]] = await Promise.all([
+            const [personalRes, groupRes] = await Promise.all([
                 db.query(personalQuery, [user_id]),
                 db.query(groupQuery, [user_id])
             ]);
 
-            personalResults.forEach(row => {
-                unseenCounts.personal_chats[row.sender_id] = row.unseen_count;
+            personalRes.rows.forEach(row => {
+                unseenCounts.personal_chats[row.sender_id] = parseInt(row.unseen_count, 10);
             });
 
-            groupResults.forEach(row => {
-                unseenCounts.group_chats[row.group_id] = row.unseen_count;
+            groupRes.rows.forEach(row => {
+                unseenCounts.group_chats[row.group_id] = parseInt(row.unseen_count, 10);
             });
 
             res.json(unseenCounts);
@@ -59,46 +59,50 @@ module.exports = (db) => {
 
         const query = `
             SELECT COUNT(*) AS unseen_count
-            FROM GroupChatMessageSeen
-            WHERE user_id = ? AND group_id = ? AND is_seen = FALSE
+            FROM group_chat_message_seen
+            WHERE user_id = $1 AND group_id = $2 AND is_seen = FALSE
         `;
         try {
-            const [results] = await db.query(query, [user_id, group_id]);
-            res.json({ unseen_count: results[0].unseen_count });
+            const { rows } = await db.query(query, [user_id, group_id]);
+            res.json({ unseen_count: parseInt(rows[0]?.unseen_count || "0", 10) });
         } catch (err) {
+            console.error("Error fetching unseen group messages:", err);
             res.status(500).json({ error: "Database error" });
         }
     });
 
     router.post("/mark-personal-messages-seen", async (req, res) => {
         const { sender_id, receiver_id } = req.body;
-        const query = `UPDATE PersonalChats SET is_seen = TRUE WHERE sender_id = ? AND receiver_id = ?`;
+        const query = `UPDATE personal_chats SET is_seen = TRUE WHERE sender_id = $1 AND receiver_id = $2`;
         try {
             await db.query(query, [sender_id, receiver_id]);
             res.json({ success: true });
         } catch (err) {
+            console.error("Error marking personal messages seen:", err);
             res.status(500).json({ error: "Error updating messages" });
         }
     });
 
     router.post("/mark-group-messages-seen", async (req, res) => {
         const { user_id, group_id } = req.body;
-        const query = `UPDATE GroupChatMessageSeen SET is_seen = TRUE WHERE user_id = ? AND group_id = ? AND is_seen = FALSE`;
+        const query = `UPDATE group_chat_message_seen SET is_seen = TRUE WHERE user_id = $1 AND group_id = $2 AND is_seen = FALSE`;
         try {
             await db.query(query, [user_id, group_id]);
             res.json({ success: true });
         } catch (err) {
+            console.error("Error marking group messages seen:", err);
             res.status(500).json({ error: "Error updating messages" });
         }
     });
 
     router.get("/messages/unseen-count", async (req, res) => {
         const { user_id, receiver_id } = req.query;
-        const query = `SELECT COUNT(*) as unseen_count FROM PersonalChats WHERE sender_id = ? AND receiver_id = ? AND is_seen = 0`;
+        const query = `SELECT COUNT(*) as unseen_count FROM personal_chats WHERE sender_id = $1 AND receiver_id = $2 AND is_seen = FALSE`;
         try {
-            const [results] = await db.query(query, [user_id, receiver_id]);
-            res.json(results[0]);
+            const { rows } = await db.query(query, [user_id, receiver_id]);
+            res.json({ unseen_count: parseInt(rows[0]?.unseen_count || "0", 10) });
         } catch (err) {
+            console.error("Error fetching unseen count:", err);
             res.status(500).json({ error: "Error fetching unseen count" });
         }
     });

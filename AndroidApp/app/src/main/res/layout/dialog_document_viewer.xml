@@ -1,0 +1,139 @@
+<?xml version="1.0" encoding="utf-8"?>
+<com.google.android.material.card.MaterialCardView
+    xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    app:cardCornerRadius="18dp"
+    app:cardElevation="8dp"
+    app:strokeWidth="0dp"
+    app:cardBackgroundColor="@color/card_background">
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="vertical">
+
+        <!-- Header with Back Arrow -->
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="horizontal"
+            android:gravity="center_vertical"
+            android:background="@color/primary"
+            android:paddingHorizontal="12dp"
+            android:paddingVertical="14dp">
+
+            <ImageButton
+                android:id="@+id/btnDocViewerBack"
+                android:layout_width="40dp"
+                android:layout_height="40dp"
+                android:background="?attr/selectableItemBackgroundBorderless"
+                android:src="@drawable/ic_arrow_back"
+                android:contentDescription="Back"
+                app:tint="#FFFFFF" />
+
+            <LinearLayout
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:layout_marginStart="8dp"
+                android:orientation="vertical">
+
+                <TextView
+                    android:id="@+id/tvDocViewerTitle"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="Document Preview"
+                    android:textSize="17sp"
+                    android:textStyle="bold"
+                    android:textColor="#FFFFFF" />
+
+                <TextView
+                    android:id="@+id/tvDocViewerBadge"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="PDF Document"
+                    android:textSize="11sp"
+                    android:textColor="#DBEAFE" />
+
+            </LinearLayout>
+
+        </LinearLayout>
+
+        <!-- Scrollable Document / PDF Pages Container -->
+        <com.accurateaccounts.app.utils.SmoothScrollView
+            android:layout_width="match_parent"
+            android:layout_height="440dp"
+            android:background="#F1F5F9"
+            android:scrollbars="vertical"
+            android:fadeScrollbars="false"
+            android:scrollbarThumbVertical="@drawable/custom_scrollbar_thumb"
+            android:scrollbarSize="5dp"
+            android:padding="12dp"
+            android:clipToPadding="false">
+
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="vertical">
+
+                <!-- Native PDF Rendered Pages -->
+                <LinearLayout
+                    android:id="@+id/layoutPdfPagesContainer"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:orientation="vertical"
+                    android:visibility="gone" />
+
+                <!-- Image Preview (PAN / Aadhar PNG or JPEG) -->
+                <ImageView
+                    android:id="@+id/ivDocViewerImage"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:adjustViewBounds="true"
+                    android:scaleType="fitCenter"
+                    android:visibility="gone"
+                    android:contentDescription="Document Image Preview" />
+
+                <!-- Text Fallback -->
+                <TextView
+                    android:id="@+id/tvDocViewerText"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:fontFamily="monospace"
+                    android:textSize="13sp"
+                    android:lineSpacingExtra="4dp"
+                    android:padding="12dp"
+                    android:background="#FFFFFF"
+                    android:textColor="@color/text_primary"
+                    android:visibility="gone" />
+
+            </LinearLayout>
+
+        </com.accurateaccounts.app.utils.SmoothScrollView>
+
+        <!-- Bottom Download Action Bar -->
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="horizontal"
+            android:padding="14dp"
+            android:background="@color/card_background">
+
+            <com.google.android.material.button.MaterialButton
+                android:id="@+id/btnDocViewerDownload"
+                android:layout_width="match_parent"
+                android:layout_height="48dp"
+                android:text="⬇ Download PDF"
+                android:textSize="14sp"
+                android:textStyle="bold"
+                android:textAllCaps="false"
+                app:cornerRadius="10dp"
+                app:backgroundTint="@color/primary" />
+
+        </LinearLayout>
+
+    </LinearLayout>
+
+</com.google.android.material.card.MaterialCardView>

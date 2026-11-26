@@ -23,7 +23,6 @@ class DataCache {
     }
 
     start(intervalMs = 30000) {
-        // console.log(`Starting Data Cache with ${intervalMs}ms interval...`);
         this.refresh();
         setInterval(() => this.refresh(), intervalMs);
     }
@@ -33,47 +32,48 @@ class DataCache {
             // --- USERS ---
             const userQuery = `
                 SELECT 
-                    Users.user_id, Users.auth_id, Auth.username, Auth.role, 
-                    Users.first_name, Users.last_name, Users.email, Users.phone, 
-                    Users.profile_pic, Users.created_at, Users.updated_at 
-                FROM Users 
-                INNER JOIN Auth ON Users.auth_id = Auth.auth_id
-                ORDER BY Users.user_id ASC`;
+                    u.user_id, u.auth_id, a.username, a.role, 
+                    u.first_name, u.last_name, u.email, u.phone, 
+                    u.profile_pic, u.created_at, u.updated_at 
+                FROM users u 
+                INNER JOIN auth a ON u.auth_id = a.auth_id
+                ORDER BY u.user_id ASC`;
 
             // --- GROUPS & MESSAGES ---
-            const groupQuery = `SELECT group_id, group_name, created_at FROM GroupChats ORDER BY created_at DESC`;
+            const groupQuery = `SELECT group_id, group_name, created_at FROM group_chats ORDER BY created_at DESC`;
             const groupMembersQuery = `
                 SELECT gcm.group_id, u.user_id, u.first_name, u.last_name, u.profile_pic, a.role
-                FROM GroupChatMembers gcm
-                JOIN Users u ON gcm.user_id = u.user_id
-                JOIN Auth a ON u.auth_id = a.auth_id`;
+                FROM group_chat_members gcm
+                JOIN users u ON gcm.user_id = u.user_id
+                JOIN auth a ON u.auth_id = a.auth_id`;
             const groupMsgsQuery = `
                 SELECT 
                     gcm.message_id, gcm.group_id, gcm.sender_id, gcm.message, gcm.created_at,
                     u.first_name, u.last_name, u.profile_pic
-                FROM GroupChatMessages gcm
-                JOIN Users u ON gcm.sender_id = u.user_id
-                WHERE gcm.created_at >= DATE_SUB(NOW(), INTERVAL 7 DAY)
+                FROM group_chat_messages gcm
+                JOIN users u ON gcm.sender_id = u.user_id
+                WHERE gcm.created_at >= (NOW() - INTERVAL '7 days')
                 ORDER BY gcm.created_at ASC`;
             const personalMsgsQuery = `
                 SELECT 
                     pc.chat_id, pc.sender_id, pc.receiver_id, pc.message, pc.created_at,
                     u1.first_name as sender_first_name, u1.last_name as sender_last_name, u1.profile_pic as sender_profile_pic,
                     u2.first_name as receiver_first_name, u2.last_name as receiver_last_name, u2.profile_pic as receiver_profile_pic
-                FROM PersonalChats pc
-                JOIN Users u1 ON pc.sender_id = u1.user_id
-                JOIN Users u2 ON pc.receiver_id = u2.user_id
-                WHERE pc.created_at >= DATE_SUB(NOW(), INTERVAL 7 DAY)
+                FROM personal_chats pc
+                JOIN users u1 ON pc.sender_id = u1.user_id
+                JOIN users u2 ON pc.receiver_id = u2.user_id
+                WHERE pc.created_at >= (NOW() - INTERVAL '7 days')
                 ORDER BY created_at ASC`;
 
             // --- CLIENTS & DOCUMENTS ---
             const clientQuery = `
-                SELECT Clients.client_id, Clients.auth_id, Auth.username, Auth.role,
-                       Clients.company_name, Clients.contact_person, Clients.email,
-                       Clients.gstin, Clients.pan_number, Clients.profile_pic,
-                       Clients.created_at, Clients.updated_at
-                FROM Clients
-                INNER JOIN Auth ON Clients.auth_id = Auth.auth_id`;
+                SELECT c.client_id, c.auth_id, a.username, a.role,
+                       c.company_name, c.contact_person, c.email,
+                       c.gstin, c.pan_number, c.profile_pic,
+                       COALESCE((SELECT phone FROM client_contacts WHERE client_id = c.client_id ORDER BY contact_id LIMIT 1), '') AS phone,
+                       c.created_at, c.updated_at
+                FROM clients c
+                INNER JOIN auth a ON c.auth_id = a.auth_id`;
 
             const taskQuery = `
                 SELECT 
@@ -82,10 +82,10 @@ class DataCache {
                     assignedBy.first_name AS assigned_by_first_name, assignedBy.last_name AS assigned_by_last_name,
                     assignedTo.first_name AS assigned_to_first_name, assignedTo.last_name AS assigned_to_last_name,
                     gc.group_name
-                FROM Tasks t
-                LEFT JOIN Users assignedBy ON t.assigned_by = assignedBy.user_id
-                LEFT JOIN Users assignedTo ON t.assigned_to = assignedTo.user_id
-                LEFT JOIN GroupChats gc ON t.group_id = gc.group_id
+                FROM tasks t
+                LEFT JOIN users assignedBy ON t.assigned_by = assignedBy.user_id
+                LEFT JOIN users assignedTo ON t.assigned_to = assignedTo.user_id
+                LEFT JOIN group_chats gc ON t.group_id = gc.group_id
                 ORDER BY 
                     CASE WHEN t.priority = 'High' THEN 1
                          WHEN t.priority = 'Medium' THEN 2
@@ -95,71 +95,71 @@ class DataCache {
 
             const feedbackQuery = `
                 SELECT f.feedback_id, f.message, f.created_at, c.company_name, c.contact_person
-                FROM Feedback f
-                JOIN Clients c ON f.client_id = c.client_id
+                FROM feedback f
+                JOIN clients c ON f.client_id = c.client_id
                 ORDER BY f.created_at DESC`;
 
             // Execute all queries in parallel for maximum performance
             const [
-                [users],
-                [groups],
-                [groupMembers],
-                [groupMessages],
-                [personalMessages],
-                [announcements],
-                [clients],
-                [clientContacts],
-                [tasks],
-                [folders],
-                [folderConnections],
-                [importantDocuments],
-                [otherDocuments],
-                [feedbacks],
-                [guestMessages],
-                [clientUserRelations]
+                usersRes,
+                groupsRes,
+                groupMembersRes,
+                groupMessagesRes,
+                personalMessagesRes,
+                announcementsRes,
+                clientsRes,
+                clientContactsRes,
+                tasksRes,
+                foldersRes,
+                folderConnectionsRes,
+                importantDocumentsRes,
+                otherDocumentsRes,
+                feedbacksRes,
+                guestMessagesRes,
+                clientUserRelationsRes
             ] = await Promise.all([
                 db.query(userQuery),
                 db.query(groupQuery),
                 db.query(groupMembersQuery),
                 db.query(groupMsgsQuery),
                 db.query(personalMsgsQuery),
-                db.query(`SELECT announcement_id, auth_id, title, message, created_at FROM Announcements ORDER BY created_at DESC`),
+                db.query(`SELECT a.announcement_id, a.auth_id, a.title, a.message, COALESCE(a.created_by, 'Admin') as created_by, COALESCE(a.announcement_date, TO_CHAR(a.created_at, 'YYYY-MM-DD')) as announcement_date, a.created_at FROM announcements a ORDER BY a.announcement_id DESC`),
                 db.query(clientQuery),
-                db.query(`SELECT contact_id, client_id, contact_name, email, phone FROM ClientContacts`),
+                db.query(`SELECT contact_id, client_id, contact_name, email, phone FROM client_contacts`),
                 db.query(taskQuery),
-                db.query(`SELECT folder_id, folder_name FROM Folders`),
-                db.query(`SELECT folder_id, client_id FROM FolderConnections`),
-                db.query(`SELECT doc_id, client_id, doc_name, folder_id, created_at FROM ImportantDocuments`),
-                db.query(`SELECT doc_id, client_id, doc_name, folder_id, created_at FROM OtherDocuments`),
+                db.query(`SELECT folder_id, folder_name FROM folders`),
+                db.query(`SELECT folder_id, client_id FROM folder_connections`),
+                db.query(`SELECT doc_id, client_id, doc_type as doc_name, doc_type, folder_id, created_at FROM important_documents`),
+                db.query(`SELECT doc_id, client_id, doc_name, folder_id, created_at FROM other_documents`),
                 db.query(feedbackQuery),
-                db.query(`SELECT message_id, guest_name, guest_email, message, created_at FROM GuestMessages ORDER BY created_at DESC`),
-                db.query(`SELECT client_id, user_id, relation_type FROM ClientUserRelations`)
+                db.query(`SELECT message_id, guest_name, guest_email, message, created_at FROM guest_messages ORDER BY created_at DESC`),
+                db.query(`SELECT client_id, user_id, relation_type FROM client_user_relations`)
             ]);
 
-            // Update Cache atomatically (all at once)
-            this.users = users;
-            this.groups = groups;
-            this.groupMembers = groupMembers;
-            this.groupMessages = groupMessages;
-            this.personalMessages = personalMessages;
-            this.announcements = announcements;
-            this.clients = clients;
-            this.clientContacts = clientContacts;
-            this.tasks = tasks;
-            this.folders = folders;
-            this.folderConnections = folderConnections;
-            this.importantDocuments = importantDocuments;
-            this.otherDocuments = otherDocuments;
-            this.feedbacks = feedbacks;
-            this.guestMessages = guestMessages;
-            this.clientUserRelations = clientUserRelations;
+            // Update Cache
+            this.users = usersRes.rows;
+            this.groups = groupsRes.rows;
+            this.groupMembers = groupMembersRes.rows;
+            this.groupMessages = groupMessagesRes.rows;
+            this.personalMessages = personalMessagesRes.rows;
+            this.announcements = announcementsRes.rows;
+            this.clients = clientsRes.rows;
+            this.clientContacts = clientContactsRes.rows;
+            this.tasks = tasksRes.rows;
+            this.folders = foldersRes.rows;
+            this.folderConnections = folderConnectionsRes.rows;
+            this.importantDocuments = importantDocumentsRes.rows;
+            this.otherDocuments = otherDocumentsRes.rows;
+            this.feedbacks = feedbacksRes.rows;
+            this.guestMessages = guestMessagesRes.rows;
+            this.clientUserRelations = clientUserRelationsRes.rows;
 
         } catch (error) {
-            console.error("❌ DataCache Refresh Error:", error);
+            console.error("❌ DataCache Refresh Error:", error.message);
         }
     }
 
-    // --- GETTERS (Remain Sync since they access the cache memory) ---
+    // --- GETTERS ---
 
     // USERS
     getUsers() { return this.users; }
@@ -215,10 +215,8 @@ class DataCache {
         const targetClients = clientId ? this.clients.filter(c => c.client_id == clientId) : this.clients;
 
         return targetClients.map(client => {
-            // Get Check Connections
             const clientConnections = this.folderConnections.filter(fc => fc.client_id == client.client_id);
 
-            // Map Folders
             const clientFolders = clientConnections.map(conn => {
                 const folderDef = this.folders.find(f => f.folder_id == conn.folder_id);
                 return {
@@ -232,7 +230,6 @@ class DataCache {
             const clientImpDocs = this.importantDocuments.filter(d => d.client_id == client.client_id);
             const clientOtherDocs = this.otherDocuments.filter(d => d.client_id == client.client_id);
 
-            // Assign to folders
             clientImpDocs.forEach(doc => {
                 if (doc.folder_id) {
                     const f = clientFolders.find(cf => cf.folder_id == doc.folder_id);
@@ -261,7 +258,6 @@ class DataCache {
 
     // FOLDERS
     getRemainingFolders(clientId) {
-        // Folders NOT connected to this client (and not ID 1)
         const connectedFolderIds = new Set(this.folderConnections
             .filter(fc => fc.client_id == clientId)
             .map(fc => fc.folder_id));

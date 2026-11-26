@@ -11,63 +11,66 @@ module.exports = (db, io) => {
             return res.status(400).json({ message: "Invalid type." });
         }
 
+        const client = await db.connect();
         try {
-            await db.beginTransaction();
+            await client.query("BEGIN");
 
             if (type === "user") {
-                const [user] = await db.query(`SELECT auth_id FROM Users WHERE user_id = ?`, [id]);
-                if (user.length === 0) {
-                    await db.rollback();
+                const userRes = await client.query(`SELECT auth_id FROM users WHERE user_id = $1`, [id]);
+                if (userRes.rows.length === 0) {
+                    await client.query("ROLLBACK");
                     return res.status(404).json({ message: "User not found" });
                 }
 
-                const authId = user[0].auth_id;
+                const authId = userRes.rows[0].auth_id;
 
                 // Cleanup related data
-                await db.query(`DELETE FROM ClientUserRelations WHERE user_id = ?`, [id]);
-                await db.query(`DELETE FROM GroupChatMessageSeen WHERE user_id = ?`, [id]);
-                await db.query(`DELETE FROM GroupChatMessages WHERE sender_id = ?`, [id]);
-                await db.query(`DELETE FROM GroupChatMembers WHERE user_id = ?`, [id]);
-                await db.query(`DELETE FROM PersonalChats WHERE sender_id = ? OR receiver_id = ?`, [id, id]);
-                await db.query(`DELETE FROM Tasks WHERE assigned_by = ? OR assigned_to = ?`, [id, id]);
+                await client.query(`DELETE FROM client_user_relations WHERE user_id = $1`, [id]);
+                await client.query(`DELETE FROM group_chat_message_seen WHERE user_id = $1`, [id]);
+                await client.query(`DELETE FROM group_chat_messages WHERE sender_id = $1`, [id]);
+                await client.query(`DELETE FROM group_chat_members WHERE user_id = $1`, [id]);
+                await client.query(`DELETE FROM personal_chats WHERE sender_id = $1 OR receiver_id = $2`, [id, id]);
+                await client.query(`DELETE FROM tasks WHERE assigned_by = $1 OR assigned_to = $2`, [id, id]);
                 
                 try {
-                    await db.query(`UPDATE GroupChats SET created_by = NULL WHERE created_by = ?`, [id]);
+                    await client.query(`UPDATE group_chats SET created_by = NULL WHERE created_by = $1`, [id]);
                 } catch (e) {
                     console.warn("Could not nullify GroupChat owner:", e.message);
                 }
 
-                await db.query(`DELETE FROM Users WHERE user_id = ?`, [id]);
-                await db.query(`DELETE FROM Announcements WHERE auth_id = ?`, [authId]);
-                await db.query(`DELETE FROM Auth WHERE auth_id = ?`, [authId]);
+                await client.query(`DELETE FROM users WHERE user_id = $1`, [id]);
+                await client.query(`DELETE FROM announcements WHERE auth_id = $1`, [authId]);
+                await client.query(`DELETE FROM auth WHERE auth_id = $1`, [authId]);
 
             } else if (type === "client") {
-                const [client] = await db.query(`SELECT auth_id FROM Clients WHERE client_id = ?`, [id]);
-                if (client.length === 0) {
-                    await db.rollback();
+                const clientRes = await client.query(`SELECT auth_id FROM clients WHERE client_id = $1`, [id]);
+                if (clientRes.rows.length === 0) {
+                    await client.query("ROLLBACK");
                     return res.status(404).json({ message: "Client not found" });
                 }
 
-                const authId = client[0].auth_id;
+                const authId = clientRes.rows[0].auth_id;
 
-                await db.query(`DELETE FROM ClientUserRelations WHERE client_id = ?`, [id]);
-                await db.query(`DELETE FROM Feedback WHERE client_id = ?`, [id]);
-                await db.query(`DELETE FROM ClientContacts WHERE client_id = ?`, [id]);
-                await db.query(`DELETE FROM ImportantDocuments WHERE client_id = ?`, [id]);
-                await db.query(`DELETE FROM OtherDocuments WHERE client_id = ?`, [id]);
-                await db.query(`DELETE FROM FolderConnections WHERE client_id = ?`, [id]);
-                await db.query(`DELETE FROM Clients WHERE client_id = ?`, [id]);
-                await db.query(`DELETE FROM Auth WHERE auth_id = ?`, [authId]);
+                await client.query(`DELETE FROM client_user_relations WHERE client_id = $1`, [id]);
+                await client.query(`DELETE FROM feedback WHERE client_id = $1`, [id]);
+                await client.query(`DELETE FROM client_contacts WHERE client_id = $1`, [id]);
+                await client.query(`DELETE FROM important_documents WHERE client_id = $1`, [id]);
+                await client.query(`DELETE FROM other_documents WHERE client_id = $1`, [id]);
+                await client.query(`DELETE FROM folder_connections WHERE client_id = $1`, [id]);
+                await client.query(`DELETE FROM clients WHERE client_id = $1`, [id]);
+                await client.query(`DELETE FROM auth WHERE auth_id = $1`, [authId]);
             }
 
-            await db.commit();
+            await client.query("COMMIT");
             io.emit("user_deleted", { id, type });
             res.status(200).json({ status: "success", message: `${type} deleted successfully.` });
 
         } catch (err) {
-            await db.rollback();
+            await client.query("ROLLBACK");
             console.error(`Deletion error for ${type}:`, err.message);
             res.status(500).json({ status: "error", message: "Deletion failed.", details: err.message });
+        } finally {
+            client.release();
         }
     });
 

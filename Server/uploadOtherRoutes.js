@@ -12,17 +12,18 @@ module.exports = (db) => {
     }
   
     const insertSql = `
-      INSERT INTO OtherDocuments (client_id, folder_id, doc_name, doc_data)
-      VALUES (?, ?, ?, ?)
+      INSERT INTO other_documents (client_id, folder_id, doc_name, doc_data)
+      VALUES ($1, $2, $3, $4)
+      RETURNING doc_id
     `;
-    const fileData = fileUrl && fileUrl.trim() !== "" ? fileUrl : null;
+    const fileData = fileUrl && fileUrl.trim() !== "" ? fileUrl : "";
   
     try {
-      const [result] = await db.query(insertSql, [client_id, folder_id, doc_name, fileData]);
+      const result = await db.query(insertSql, [client_id, folder_id || null, doc_name, fileData]);
       res.status(201).json({
         success: true,
         message: "Other document inserted successfully",
-        insertedId: result.insertId,
+        insertedId: result.rows[0].doc_id,
       });
     } catch (err) {
       console.error("Insert error:", err);
@@ -40,12 +41,12 @@ module.exports = (db) => {
     }
 
     try {
-      const [results] = await db.query("SELECT * FROM OtherDocuments WHERE doc_id = ?", [doc_id]);
-      if (results.length === 0) {
+      const { rows } = await db.query("SELECT * FROM other_documents WHERE doc_id = $1", [doc_id]);
+      if (rows.length === 0) {
         return res.status(404).json({ success: false, message: "Document not found" });
       }
 
-      await db.query("UPDATE OtherDocuments SET doc_data = ? WHERE doc_id = ?", [fileUrl, doc_id]);
+      await db.query("UPDATE other_documents SET doc_data = $1 WHERE doc_id = $2", [fileUrl, doc_id]);
       res.json({ success: true, message: "Other document updated successfully" });
     } catch (err) {
       console.error("Update error:", err);
@@ -56,11 +57,11 @@ module.exports = (db) => {
   // 🔍 Get document by doc_id
   router.get("/other/get/:doc_id", async (req, res) => {
     try {
-      const [results] = await db.query("SELECT * FROM OtherDocuments WHERE doc_id = ?", [req.params.doc_id]);
-      if (results.length === 0) {
+      const { rows } = await db.query("SELECT * FROM other_documents WHERE doc_id = $1", [req.params.doc_id]);
+      if (rows.length === 0) {
         return res.status(404).json({ success: false, message: "Document not found" });
       }
-      res.json({ success: true, data: results[0] });
+      res.json({ success: true, data: rows[0] });
     } catch (err) {
       res.status(500).json({ success: false, message: "Failed to fetch document" });
     }
@@ -69,8 +70,8 @@ module.exports = (db) => {
   // 🔍 Get all documents for a client
   router.get("/other/getByClient/:client_id", async (req, res) => {
     try {
-      const [results] = await db.query("SELECT * FROM OtherDocuments WHERE client_id = ?", [req.params.client_id]);
-      res.json({ success: true, documents: results });
+      const { rows } = await db.query("SELECT * FROM other_documents WHERE client_id = $1", [req.params.client_id]);
+      res.json({ success: true, documents: rows });
     } catch (err) {
       res.status(500).json({ success: false, message: "Failed to fetch documents" });
     }

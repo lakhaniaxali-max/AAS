@@ -31,6 +31,15 @@ dist-ssr
 
 # Testing
 coverage
+temp/
+
+# Android
+.gradle/
+**/build/
+**/intermediates/
+**/outputs/
+local.properties
+.cxx/
 
 # Operating System
 Thumbs.db
